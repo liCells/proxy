@@ -3,11 +3,14 @@ extern crate serde_json;
 use std::{env, process};
 use std::fs;
 use std::fs::File;
-use std::path::Path;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::process::Command;
-use serde::{Serialize, Deserialize};
+
+use serde::{Deserialize, Serialize};
+
+use proxy::ThreadPool;
 
 fn main() {
     let path: Vec<String> = env::args().collect();
@@ -22,12 +25,16 @@ fn main() {
     let conf = parse_config(path.to_string());
     inspect_config(conf);
 
-    // 监听对应端口
-    let listener = TcpListener::bind("127.0.0.1:12004").expect("The port is occupied.");
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
+    let pool = ThreadPool::new(4);
 
-        handle_connection(path.to_string(), stream);
+    // 监听对应端口
+    let listener = TcpListener::bind("0.0.0.0:12004").expect("The port is occupied.");
+
+    for stream in listener.incoming() {
+        pool.execute(move||{
+            let stream = stream.unwrap();
+            handle_connection(String::from("/Users/lz/code/projects/github/proxy/html/"), stream)
+        })
     }
 }
 
@@ -92,6 +99,7 @@ fn handle_connection(path: String, mut stream: TcpStream) {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Config {
+    thread_pool_size: usize,
     proxy_group: Vec<Proxy>,
 }
 
@@ -101,6 +109,6 @@ struct Proxy {
     context: String,
     path: String,
     index: String,
-    timeout: u16,
+    timeout: usize,
     cache: bool,
 }
