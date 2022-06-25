@@ -1,4 +1,5 @@
 extern crate serde_json;
+extern crate threadpool;
 
 use std::{env, process};
 use std::fs;
@@ -7,10 +8,10 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::Command;
+use std::thread::Thread;
 
 use serde::{Deserialize, Serialize};
-
-use proxy::ThreadPool;
+use threadpool::ThreadPool;
 
 fn main() {
     let path: Vec<String> = env::args().collect();
@@ -23,18 +24,48 @@ fn main() {
 
     // 处理并检查配置文件
     let conf = parse_config(path.to_string());
-    inspect_config(conf);
+    inspect_config(&conf);
 
-    let pool = ThreadPool::new(4);
+    let tcp_listen_thread_pool = ThreadPool::new(conf.proxy_group.len());
+    tcp_listen_thread_pool.execute(move ||{
+        println!("1")
+    });
 
-    // 监听对应端口
-    let listener = TcpListener::bind("0.0.0.0:12004").expect("The port is occupied.");
+    for proxy in conf.proxy_group {
+        tcp_listen_thread_pool.execute(move ||{
+            listener_bind(proxy);
+        });
+    }
+    // TODO 保持线程存活
+    loop {
+
+    }
+}
+
+// 监听绑定
+fn listener_bind(proxy: Proxy) {
+    let addr = format!(
+        "{}:{}",
+        proxy.bind,
+        proxy.port
+    );
+    println!("listener: {}", addr);
+
+    // 创建监听
+    let listener = TcpListener::bind(addr)
+        .expect("The port is occupied.");
+
+    let worker_thread_pool = ThreadPool::new(proxy.thread_pool_size);
 
     for stream in listener.incoming() {
-        pool.execute(move||{
-            let stream = stream.unwrap();
-            handle_connection(String::from("/Users/lz/code/projects/github/proxy/html/"), stream)
-        })
+        let path = format!(
+            "{}{}",
+            proxy.path,
+            proxy.context
+        );
+        worker_thread_pool.execute(move ||{
+            handle_connection(path, stream.unwrap())
+        });
     }
 }
 
@@ -45,8 +76,8 @@ fn parse_config(path: String) -> Config {
 }
 
 // 检查配置
-fn inspect_config(conf: Config) {
-    for proxy in conf.proxy_group {
+fn inspect_config(conf: &Config) {
+    for proxy in &conf.proxy_group {
         if proxy.port == 0u32 || proxy.port > 65535u32 {
             prompt_and_exit("Checking Port Settings.");
         }
@@ -99,12 +130,13 @@ fn handle_connection(path: String, mut stream: TcpStream) {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Config {
-    thread_pool_size: usize,
     proxy_group: Vec<Proxy>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Proxy {
+    thread_pool_size: usize,
+    bind: String,
     port: u32,
     context: String,
     path: String,
