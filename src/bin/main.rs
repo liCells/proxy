@@ -2,13 +2,13 @@ extern crate serde_json;
 extern crate threadpool;
 
 use std::{env, process};
+use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::Command;
-use std::thread::Thread;
 
 use serde::{Deserialize, Serialize};
 use threadpool::ThreadPool;
@@ -78,22 +78,40 @@ fn handle_connection(proxy: Proxy, mut stream: TcpStream) {
     let req_vec = arr.collect::<Vec<&str>>();
     let mut filename = req_vec[1];
 
-    if !filename.starts_with(&proxy.context) {
-        return;
-    }
-    if proxy.context.ne("/") {
-        filename = &filename[proxy.context.len()..];
+    let mut symbol = true;
+    let mut quote = Option::None;
+
+    for rule in proxy.rules {
+        // 确认代理前缀是否匹配
+        if filename.starts_with(&rule.0) {
+            symbol = false;
+            quote = Option::Some(rule.clone());
+            if rule.0.eq("/") || rule.0.eq("") {
+                continue;
+            }
+            break;
+        }
     }
 
+    if symbol && quote.is_none() {
+        return;
+    }
+    let quote = quote.unwrap();
+    // 替换代理前缀
+    if quote.0.ne("/") {
+        filename = &filename[quote.0.len()..];
+    }
+
+    // 替换默认路径
     if filename.eq("") || filename.eq("/") {
-        filename = proxy.index.as_str();
+        filename = &quote.1.index.as_str();
     }
 
     if buffer.starts_with("GET".as_bytes()) {
         // 找到对应文件并写入
         let path = format!(
             "{}{}",
-            proxy.path,
+            quote.1.path,
             filename
         );
         let content = fs::read_to_string(path);
@@ -140,12 +158,18 @@ struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Proxy {
-    thread_pool_size: usize,
     bind: String,
     port: u32,
-    context: String,
-    path: String,
-    index: String,
     timeout: usize,
     cache: bool,
+    thread_pool_size: usize,
+    rules: HashMap<String, Rule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Rule {
+    path: String,
+    index: String,
+    access_log: String,
+    not_found_page: String,
 }
