@@ -27,9 +27,6 @@ fn main() {
     inspect_config(&conf);
 
     let tcp_listen_thread_pool = ThreadPool::new(conf.proxy_group.len());
-    tcp_listen_thread_pool.execute(move ||{
-        println!("1")
-    });
 
     for proxy in conf.proxy_group {
         tcp_listen_thread_pool.execute(move ||{
