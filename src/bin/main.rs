@@ -46,7 +46,6 @@ fn listener_bind(proxy: Proxy) {
         proxy.bind,
         proxy.port
     );
-    println!("listener: {}", addr);
 
     // 创建监听
     let listener = TcpListener::bind(addr)
@@ -101,8 +100,6 @@ fn handle_connection(path: String, mut stream: TcpStream) {
 
     if buffer.starts_with("GET".as_bytes()) {
         // 找到对应文件并写入
-        println!("{}", &path);
-        println!("{}", filename);
         let content = fs::read_to_string(path + filename);
         let content = match content {
             Ok(c) => {
