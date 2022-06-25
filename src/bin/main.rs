@@ -52,14 +52,9 @@ fn listener_bind(proxy: Proxy) {
     let worker_thread_pool = ThreadPool::new(proxy.thread_pool_size);
 
     for stream in listener.incoming() {
-        let path = format!(
-            "{}{}",
-            proxy.path,
-            proxy.context
-        );
-        let index = proxy.index.to_string();
+        let proxy = proxy.clone();
         worker_thread_pool.execute(move || {
-            handle_connection(index, path, stream.unwrap())
+            handle_connection(proxy, stream.unwrap())
         });
     }
 }
@@ -73,21 +68,35 @@ fn prompt_and_exit(msg: &str) {
 }
 
 // 处理请求
-fn handle_connection(index: String, path: String, mut stream: TcpStream) {
+fn handle_connection(proxy: Proxy, mut stream: TcpStream) {
     let mut buffer = [0; 1024];
 
     stream.read(&mut buffer).unwrap();
 
     let req = String::from_utf8_lossy(&buffer);
     let arr = req.split(" ");
-    let mut filename = arr.collect::<Vec<&str>>()[1];
+    let req_vec = arr.collect::<Vec<&str>>();
+    let mut filename = req_vec[1];
+
+    if !filename.starts_with(&proxy.context) {
+        return;
+    }
+    if proxy.context.ne("/") {
+        filename = &filename[proxy.context.len()..];
+    }
+
     if filename.eq("") || filename.eq("/") {
-        filename = index.as_str();
+        filename = proxy.index.as_str();
     }
 
     if buffer.starts_with("GET".as_bytes()) {
         // 找到对应文件并写入
-        let content = fs::read_to_string(path + filename);
+        let path = format!(
+            "{}{}",
+            proxy.path,
+            filename
+        );
+        let content = fs::read_to_string(path);
         let content = match content {
             Ok(c) => {
                 format!(
@@ -129,7 +138,7 @@ struct Config {
     proxy_group: Vec<Proxy>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Proxy {
     thread_pool_size: usize,
     bind: String,
