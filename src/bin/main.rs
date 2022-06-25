@@ -29,14 +29,12 @@ fn main() {
     let tcp_listen_thread_pool = ThreadPool::new(conf.proxy_group.len());
 
     for proxy in conf.proxy_group {
-        tcp_listen_thread_pool.execute(move ||{
+        tcp_listen_thread_pool.execute(move || {
             listener_bind(proxy);
         });
     }
     // TODO 保持线程存活
-    loop {
-
-    }
+    loop {}
 }
 
 // 监听绑定
@@ -59,24 +57,10 @@ fn listener_bind(proxy: Proxy) {
             proxy.path,
             proxy.context
         );
-        worker_thread_pool.execute(move ||{
-            handle_connection(path, stream.unwrap())
+        let index = proxy.index.to_string();
+        worker_thread_pool.execute(move || {
+            handle_connection(index, path, stream.unwrap())
         });
-    }
-}
-
-// 转换配置
-fn parse_config(path: String) -> Config {
-    let config_file = File::open(path).unwrap();
-    serde_json::from_reader(config_file).unwrap()
-}
-
-// 检查配置
-fn inspect_config(conf: &Config) {
-    for proxy in &conf.proxy_group {
-        if proxy.port == 0u32 || proxy.port > 65535u32 {
-            prompt_and_exit("Checking Port Settings.");
-        }
     }
 }
 
@@ -89,14 +73,17 @@ fn prompt_and_exit(msg: &str) {
 }
 
 // 处理请求
-fn handle_connection(path: String, mut stream: TcpStream) {
+fn handle_connection(index: String, path: String, mut stream: TcpStream) {
     let mut buffer = [0; 1024];
 
     stream.read(&mut buffer).unwrap();
 
     let req = String::from_utf8_lossy(&buffer);
     let arr = req.split(" ");
-    let filename = arr.collect::<Vec<&str>>()[1];
+    let mut filename = arr.collect::<Vec<&str>>()[1];
+    if filename.eq("") || filename.eq("/") {
+        filename = index.as_str();
+    }
 
     if buffer.starts_with("GET".as_bytes()) {
         // 找到对应文件并写入
@@ -119,6 +106,21 @@ fn handle_connection(path: String, mut stream: TcpStream) {
             }
         };
         stream.write(content.as_bytes()).unwrap();
+    }
+}
+
+// 转换配置
+fn parse_config(path: String) -> Config {
+    let config_file = File::open(path).unwrap();
+    serde_json::from_reader(config_file).unwrap()
+}
+
+// 检查配置
+fn inspect_config(conf: &Config) {
+    for proxy in &conf.proxy_group {
+        if proxy.port == 0u32 || proxy.port > 65535u32 {
+            prompt_and_exit("Checking Port Settings.");
+        }
     }
 }
 
