@@ -96,7 +96,13 @@ fn handle_connection(proxy: Proxy, mut stream: TcpStream) {
     if symbol && quote.is_none() {
         return;
     }
+
     let quote = quote.unwrap();
+    let mut access_log = AccessLog::new(
+        filename.to_string(),
+        quote.1.access_log.to_string()
+    );
+
     // 替换代理前缀
     if quote.0.ne("/") {
         filename = &filename[quote.0.len()..];
@@ -107,6 +113,8 @@ fn handle_connection(proxy: Proxy, mut stream: TcpStream) {
         filename = &quote.1.index.as_str();
     }
 
+    access_log.to = filename.to_string();
+
     if buffer.starts_with("GET".as_bytes()) {
         // 找到对应文件并写入
         let path = format!(
@@ -114,7 +122,10 @@ fn handle_connection(proxy: Proxy, mut stream: TcpStream) {
             quote.1.path,
             filename
         );
-        let content = fs::read_to_string(path);
+        let content = fs::read_to_string(&path);
+
+        access_log.real_access_path = path;
+
         let content = match content {
             Ok(c) => {
                 format!(
@@ -134,6 +145,23 @@ fn handle_connection(proxy: Proxy, mut stream: TcpStream) {
         };
         stream.write(content.as_bytes()).unwrap();
     }
+
+    recording_access_log(access_log);
+}
+
+// 记录访问日志
+fn recording_access_log(access_log: AccessLog) {
+    let log_str = format!(
+        "echo `date +%Y-%m-%d\\ %H:%M:%S\\ \\ from:{},\\ to:\\ {}`,\\ realAccessPath:\\ {} >> {}",
+        access_log.from,
+        access_log.to,
+        access_log.real_access_path,
+        access_log.log_file_path,
+    );
+
+    let _ = Command::new("bash")
+        .args(&["-c", log_str.as_str()])
+        .spawn();
 }
 
 // 转换配置
@@ -172,4 +200,22 @@ struct Rule {
     index: String,
     access_log: String,
     not_found_page: String,
+}
+
+struct AccessLog {
+    from: String,
+    to: String,
+    real_access_path: String,
+    log_file_path: String,
+}
+
+impl AccessLog {
+    fn new(from: String, log_file_path: String) -> AccessLog {
+        AccessLog {
+            from,
+            log_file_path,
+            to: String::from(""),
+            real_access_path: String::from(""),
+        }
+    }
 }
