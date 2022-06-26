@@ -25,13 +25,13 @@ cargo run [path]
         // 代理上下文
         "/": {
           // 代理路径
-          "path": "/Users/lz/code/projects/github/proxy/html/",
+          "path": "/Users/lz/code/projects/github/proxy/html",
           // 默认跳转路径
           "index": "index.html",
-          // 404 页面
+          // TODO 404 页面
           "not_found_page": "404.html",
-          // TODO 访问日志
-          "access_log": ""
+          // 访问日志
+          "access_log": "/Users/lz/logs/access.log"
         }
       }
     }
