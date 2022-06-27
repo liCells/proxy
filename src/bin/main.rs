@@ -133,14 +133,26 @@ fn handle_connection(proxy: Proxy, mut stream: TcpStream) {
                     c.len(),
                     c
                 )
-            }
-            Err(_c) => {
-                let not_found_page = "<h1>404</h1>";
-                format!(
-                    "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\n\r\n{}",
-                    not_found_page.len(),
-                    not_found_page
-                )
+            },
+            Err(_) => {
+                let not_found_page = fs::read_to_string(&quote.1.not_found_page);
+                match not_found_page {
+                    Ok(n) => {
+                        format!(
+                            "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\n\r\n{}",
+                            n.len(),
+                            n
+                        )
+                    },
+                    Err(_) => {
+                        let not_found_page = "<h1>404</h1>";
+                        format!(
+                            "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\n\r\n{}",
+                            not_found_page.len(),
+                            not_found_page
+                        )
+                    }
+                }
             }
         };
         stream.write(content.as_bytes()).unwrap();
